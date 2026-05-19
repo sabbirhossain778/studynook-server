@@ -15,22 +15,38 @@ const port = process.env.PORT || 8000
 const uri = "mongodb+srv://studynook:tE62LgDmjtuO43zK@cluster0.3rt6ag9.mongodb.net/?appName=Cluster0";
 
 const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  }
+    serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true,
+    }
 });
 async function run() {
-  try {
-    await client.connect();
-    // await client.db("admin").command({ ping: 1 });
+    try {
+        await client.connect();
+        // await client.db("admin").command({ ping: 1 });
 
+        const db = client.db('studynook-db');
+        const roomsCollection = db.collection('rooms');
 
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
-  } finally {
-    // await client.close();
-  }
+        app.get('/all-rooms', async (req, res) => {
+            const cursor = roomsCollection.find();
+            const result = await cursor.toArray();
+            res.send(result)
+
+        })
+
+        app.get('/all-rooms/:roomId', async (req, res) => {
+            const { roomId } = req.params;
+            const query = { _id: new ObjectId(roomId) }
+            const result = await roomsCollection.findOne(query);
+            res.send(result)
+        })
+
+        console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    } finally {
+        // await client.close();
+    }
 }
 run().catch(console.dir);
 
