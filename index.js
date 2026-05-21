@@ -26,6 +26,8 @@ async function run() {
         const db = client.db('studynook-db');
         const roomsCollection = db.collection('rooms');
 
+        const bookingsCollection = client.db('studynook-db').collection('bookings');
+
         app.get('/all-rooms', async (req, res) => {
             const cursor = roomsCollection.find();
             const result = await cursor.toArray();
@@ -74,24 +76,99 @@ async function run() {
 
         app.delete('/all-rooms/:id', async (req, res) => {
             const id = req.params.id;
+            const userEmail = req.query.email;
+
+            const room = await roomsCollection.findOne({ _id: new ObjectId(id) });
+            if (!room || room.userEmail !== userEmail) {
+                return res.status(403).json({ error: "Unauthorized: You don't own this room!" });
+            }
+
             const query = { _id: new ObjectId(id) };
             const result = await roomsCollection.deleteOne(query);
             res.send(result);
         });
 
         app.patch("/all-rooms/:id", async (req, res) => {
-                const { id } = req.params;
-                const updatedData = req.body;
-                console.log("Incoming update data:", updatedData);
+            const { id } = req.params;
+            const updatedData = req.body;
+            const userEmail = req.query.email;
 
-                const result = await roomsCollection.updateOne(
-                    { _id: new ObjectId(id) },
-                    { $set: updatedData }
-                );
-                res.json(result);
+            // email check
+            const room = await roomsCollection.findOne({ _id: new ObjectId(id) });
+            if (!room || room.userEmail !== userEmail) {
+                return res.status(403).json({ error: "Unauthorized: You don't own this room!" });
+            }
+
+            const result = await roomsCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: updatedData }
+            );
+            res.json(result);
         });
 
 
+
+        // my bookings
+        app.post('/my-bookings', async (req, res) => {
+            const bookingData = req.body;
+            const { roomId, date, startTime, endTime } = bookingData;
+
+            const existingConflict = await bookingsCollection.findOne({
+                roomId: roomId,
+                date: date,
+                $or: [
+                    {
+                        startTime: { $lt: endTime },
+                        endTime: { $gt: startTime }
+                    }
+                ]
+            });
+
+            if (existingConflict) {
+                return res.status(400).json({ error: "This time slot is already booked for this room!" });
+            }
+
+            // booking save
+            const result = await bookingsCollection.insertOne({
+                ...bookingData,
+                createdAt: new Date()
+            });
+
+            res.status(201).json({ success: true, result });
+        });
+
+        app.get('/my-bookings', async (req, res) => {
+            const email = req.query.email;
+            const query = { userEmail: email };
+            const result = await bookingsCollection.find(query).toArray();
+            res.send(result);
+        });
+
+        app.patch('/bookings/:id/cancel', async (req, res) => {
+            const { id } = req.params;
+            const userEmail = req.query.email;
+
+            const booking = await bookingsCollection.findOne({ _id: new ObjectId(id) });
+            if (!booking || booking.userEmail !== userEmail) {
+                return res.send({ error: "Unauthorized" });
+            }
+
+            const result = await bookingsCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: { status: "cancelled" } }
+            );
+
+            await roomsCollection.updateOne(
+                { _id: new ObjectId(booking.roomId) },
+                { $inc: { bookingCount: -1 } }
+            );
+
+            res.json(result);
+        });
+
+
+
+        
 
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
