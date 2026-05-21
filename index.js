@@ -28,12 +28,34 @@ async function run() {
 
         const bookingsCollection = client.db('studynook-db').collection('bookings');
 
-        app.get('/all-rooms', async (req, res) => {
-            const cursor = roomsCollection.find();
-            const result = await cursor.toArray();
-            res.send(result)
+        // app.get('/all-rooms', async (req, res) => {
+        //     const cursor = roomsCollection.find();
+        //     const result = await cursor.toArray();
+        //     res.send(result)
 
-        })
+        // })
+
+
+        app.get('/all-rooms', async (req, res) => {
+            try {
+                const { search } = req.query; // ১. ইউআরএল থেকে search লেখাটা লুফে নিলাম
+                let query = {};
+
+                // ২. যদি ইউজার সার্চ বক্সে কিছু লেখে (যেমন: ?search=Quiet)
+                if (search) {
+                    query.roomName = { $regex: search, $options: 'i' }; // শুধু এই ১ লাইনের মঙ্গোডিবি ম্যাজিক (i মানে ছোট/বড় হাতের অক্ষর ম্যাটার করবে না)
+                }
+
+                // ৩. ডাটাবেজ থেকে ডাটা খোঁজা (সার্চ থাকলে সার্চের ডাটা, না থাকলে সব ডাটা)
+                const cursor = roomsCollection.find(query);
+                const result = await cursor.toArray();
+
+                res.send(result);
+            } catch (error) {
+                console.error("Error fetching rooms:", error);
+                res.status(500).send({ error: "Failed to fetch rooms" });
+            }
+        });
 
         app.get('/all-rooms/:roomId', async (req, res) => {
             const { roomId } = req.params;
@@ -43,17 +65,20 @@ async function run() {
         })
 
         app.get('/featured-rooms', async (req, res) => {
-            const cursor = roomsCollection.find().sort({ _id: -1 }).limit(6);
+            const cursor = roomsCollection.find().sort({ bookingCount: -1 }).limit(6);
             const result = await cursor.toArray();
             res.send(result);
-        })
+        });
 
         app.post('/add-room', async (req, res) => {
             try {
                 const roomData = req.body;
                 // console.log('Received Room Data:', roomData);
 
-                const result = await roomsCollection.insertOne(roomData);
+                const result = await roomsCollection.insertOne({
+                    ...roomData,
+                    bookingCount: 0
+                });
                 res.status(201).json(result);
             } catch (error) {
                 console.error("Database Insert Error:", error);
@@ -134,6 +159,11 @@ async function run() {
                 createdAt: new Date()
             });
 
+            await roomsCollection.updateOne(
+                { _id: new ObjectId(roomId) },
+                { $inc: { bookingCount: 1 } }
+            );
+
             res.status(201).json({ success: true, result });
         });
 
@@ -153,8 +183,12 @@ async function run() {
                 return res.send({ error: "Unauthorized" });
             }
 
+            if (booking.status === "cancelled") {
+                return res.status(400).json({ error: "Booking is already cancelled" });
+            }
+
             const result = await bookingsCollection.updateOne(
-                { _id: new ObjectId(id) },
+                { _id: new ObjectId(id), userEmail: userEmail },
                 { $set: { status: "cancelled" } }
             );
 
@@ -168,7 +202,7 @@ async function run() {
 
 
 
-        
+
 
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
