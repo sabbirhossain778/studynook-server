@@ -1,7 +1,9 @@
 const express = require('express')
 const dotenv = require('dotenv')
+const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const cors = require('cors')
+const cors = require('cors');
+const { createRemoteJWKSet, jwtVerify } = require('jose-cjs');
 dotenv.config();
 const app = express()
 app.use(cors())
@@ -18,6 +20,32 @@ const client = new MongoClient(uri, {
         deprecationErrors: true,
     }
 });
+
+const JWKS = createRemoteJWKSet(
+    new URL('http://localhost:3000/api/auth/jwks')
+)
+
+const verifyToken = async (req, res, next) =>{
+    const authHeader = req.headers.authorization
+    if(!authHeader) {
+        return res.status(401).json({ message: "Unauthorized Error" });
+    }
+
+    const token = authHeader.split(' ')[1]
+    if(!token) {
+        return res.status(401).json({ message: "Unauthorized Error" });
+    }
+    
+   try {
+     const { payload } = await jwtVerify(token, JWKS)
+    // console.log("payload123", payload);
+    next()
+   } catch (error) {
+    return res.status(403).json({ message: "forbidden" });
+   }  
+}
+
+
 async function run() {
     try {
         await client.connect();
@@ -57,7 +85,10 @@ async function run() {
             }
         });
 
-        app.get('/all-rooms/:roomId', async (req, res) => {
+        app.get('/all-rooms/:roomId', verifyToken, async (req, res) => {
+            const header =req.headers.authorization
+            // console.log("Route এর ভেতরের টোকেন:", header);
+            
             const { roomId } = req.params;
             const query = { _id: new ObjectId(roomId) }
             const result = await roomsCollection.findOne(query);
@@ -70,7 +101,7 @@ async function run() {
             res.send(result);
         });
 
-        app.post('/add-room', async (req, res) => {
+        app.post('/add-room', verifyToken, async (req, res) => {
             try {
                 const roomData = req.body;
                 // console.log('Received Room Data:', roomData);
@@ -86,7 +117,7 @@ async function run() {
             }
         });
 
-        app.get('/my-listings', async (req, res) => {
+        app.get('/my-listings', verifyToken, async (req, res) => {
             try {
                 const email = req.query.email;
                 const query = { userEmail: email };
@@ -99,7 +130,7 @@ async function run() {
         });
 
 
-        app.delete('/all-rooms/:id', async (req, res) => {
+        app.delete('/all-rooms/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const userEmail = req.query.email;
 
@@ -113,7 +144,7 @@ async function run() {
             res.send(result);
         });
 
-        app.patch("/all-rooms/:id", async (req, res) => {
+        app.patch("/all-rooms/:id", verifyToken, async (req, res) => {
             const { id } = req.params;
             const updatedData = req.body;
             const userEmail = req.query.email;
@@ -134,7 +165,10 @@ async function run() {
 
 
         // my bookings
-        app.post('/my-bookings', async (req, res) => {
+        app.post('/my-bookings', verifyToken, async (req, res) => {
+            const header =req.headers.authorization
+            console.log("My bookings post:", header);
+
             const bookingData = req.body;
             const { roomId, date, startTime, endTime } = bookingData;
 
@@ -167,14 +201,19 @@ async function run() {
             res.status(201).json({ success: true, result });
         });
 
-        app.get('/my-bookings', async (req, res) => {
+        app.get('/my-bookings', verifyToken, async (req, res) => {
+            const header =req.headers.authorization
+            console.log("My bookings get:", header);
             const email = req.query.email;
             const query = { userEmail: email };
             const result = await bookingsCollection.find(query).toArray();
             res.send(result);
         });
 
-        app.patch('/bookings/:id/cancel', async (req, res) => {
+        app.patch('/bookings/:id/cancel', verifyToken, async (req, res) => {
+            const header =req.headers.authorization
+            console.log("My bookings cancel:", header);
+
             const { id } = req.params;
             const userEmail = req.query.email;
 
@@ -211,11 +250,6 @@ async function run() {
 }
 run().catch(console.dir);
 
-
-
-app.get('/', (req, res) => {
-    res.send('Hello World! Hello World! Hello World!')
-})
 
 app.listen(port, () => {
     console.log(`Example app listening on port ${port}`)
