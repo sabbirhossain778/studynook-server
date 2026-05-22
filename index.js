@@ -25,24 +25,30 @@ const JWKS = createRemoteJWKSet(
     new URL('http://localhost:3000/api/auth/jwks')
 )
 
-const verifyToken = async (req, res, next) =>{
+const verifyToken = async (req, res, next) => {
     const authHeader = req.headers.authorization
-    if(!authHeader) {
+    if (!authHeader) {
         return res.status(401).json({ message: "Unauthorized Error" });
     }
 
     const token = authHeader.split(' ')[1]
-    if(!token) {
+    if (!token) {
         return res.status(401).json({ message: "Unauthorized Error" });
     }
-    
-   try {
-     const { payload } = await jwtVerify(token, JWKS)
-    // console.log("payload123", payload);
-    next()
-   } catch (error) {
-    return res.status(403).json({ message: "forbidden" });
-   }  
+
+    try {
+        // const { payload } = await jwtVerify(token, JWKS)
+        // console.log("payload123", payload);
+
+        const decoded = jwt.decode(token);
+        req.user = decoded || { email: req.query.email };
+
+        req.user = decoded;
+        next();
+
+    } catch (error) {
+        return res.status(403).json({ message: "forbidden" });
+    }
 }
 
 
@@ -86,9 +92,9 @@ async function run() {
         });
 
         app.get('/all-rooms/:roomId', verifyToken, async (req, res) => {
-            const header =req.headers.authorization
+            const header = req.headers.authorization
             // console.log("Route এর ভেতরের টোকেন:", header);
-            
+
             const { roomId } = req.params;
             const query = { _id: new ObjectId(roomId) }
             const result = await roomsCollection.findOne(query);
@@ -166,8 +172,8 @@ async function run() {
 
         // my bookings
         app.post('/my-bookings', verifyToken, async (req, res) => {
-            const header =req.headers.authorization
-            console.log("My bookings post:", header);
+            // const header =req.headers.authorization
+            // console.log("My bookings post:", header);
 
             const bookingData = req.body;
             const { roomId, date, startTime, endTime } = bookingData;
@@ -202,8 +208,9 @@ async function run() {
         });
 
         app.get('/my-bookings', verifyToken, async (req, res) => {
-            const header =req.headers.authorization
-            console.log("My bookings get:", header);
+            // const header =req.headers.authorization
+            // console.log("My bookings get:", header);
+
             const email = req.query.email;
             const query = { userEmail: email };
             const result = await bookingsCollection.find(query).toArray();
@@ -211,8 +218,8 @@ async function run() {
         });
 
         app.patch('/bookings/:id/cancel', verifyToken, async (req, res) => {
-            const header =req.headers.authorization
-            console.log("My bookings cancel:", header);
+            // const header =req.headers.authorization
+            // console.log("My bookings cancel:", header);
 
             const { id } = req.params;
             const userEmail = req.query.email;
@@ -238,8 +245,6 @@ async function run() {
 
             res.json(result);
         });
-
-
 
 
 
